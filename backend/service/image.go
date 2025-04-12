@@ -7,45 +7,9 @@ import (
 	"picture_storage/model"
 	"picture_storage/pkg/minio"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 )
-
-type ImageModel struct {
-	ID        uint64    `json:"id" gorm:"column:id;primary_key;auto_increment"`
-	ImageName string    `json:"image_name" gorm:"column:image_name"`
-	ImageCode string    `json:"image_code" gorm:"column:image_code"`
-	Ext       string    `json:"ext" gorm:"column:ext"`
-	Size      int64     `json:"size" gorm:"column:size"`
-	Directory string    `json:"directory" gorm:"column:directory"`
-	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
-}
-
-type ImageTagModel struct {
-	ID        uint64    `json:"id" gorm:"column:id;primary_key;auto_increment"`
-	ImageID   uint64    `json:"image_id" gorm:"column:image_id"`
-	TagID     uint64    `json:"tag_id" gorm:"column:tag_id"`
-	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
-}
-
-type TagModel struct {
-	ID        uint64    `json:"id" gorm:"column:id;primary_key;auto_increment"`
-	TagName   string    `json:"tag_name" gorm:"column:tag_name"`
-	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
-}
-
-func (*TagModel) TableName() string {
-	return "tag"
-}
-
-func (*ImageTagModel) TableName() string {
-	return "image_tag"
-}
-
-func (*ImageModel) TableName() string {
-	return "image"
-}
 
 type ImageService struct {
 }
@@ -86,8 +50,26 @@ func (service *ImageService) UploadImage(directory string, file *multipart.FileH
 	return md5WithExt, size, nil
 }
 
-func (service *ImageService) GetImageListByDirectory(directory string, page model.Pagination) ([]ImageModel, int64, error) {
-	imageList := make([]ImageModel, 0)
+func (service *ImageService) GetTagsByImageID(imageID uint64) ([]string, error) {
+	var tags []string
+	var imageTagList []model.ImageTagModel
+	err := db.DB.Model(&model.ImageTagModel{}).Where("image_id = ?", imageID).Find(&imageTagList).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, imageTag := range imageTagList {
+		var tag model.TagModel
+		err := db.DB.Model(&model.TagModel{}).Where("id = ?", imageTag.TagID).Find(&tag).Error
+		if err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag.TagName)
+	}
+	return tags, nil
+}
+
+func (service *ImageService) GetImageListByDirectory(directory string, page model.Pagination) ([]model.ImageModel, int64, error) {
+	imageList := make([]model.ImageModel, 0)
 	err := db.DB.Where("directory = ?", directory).
 		Offset((page.Page - 1) * page.PageSize).
 		Limit(page.PageSize).
@@ -97,17 +79,17 @@ func (service *ImageService) GetImageListByDirectory(directory string, page mode
 		return nil, 0, err
 	}
 	var total int64
-	err = db.DB.Model(&ImageModel{}).Where("directory = ?", directory).Count(&total).Error
+	err = db.DB.Model(&model.ImageModel{}).Where("directory = ?", directory).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 	return imageList, total, nil
 }
 
-func (service *ImageService) GetImageListByTag(directory string, tag string, page model.Pagination) ([]ImageModel, int64, error) {
+func (service *ImageService) GetImageListByTag(directory string, tag string, page model.Pagination) ([]model.ImageDTO, int64, error) {
 	// TODO: 这里需要实现从数据库获取图片列表的逻辑
 	// 临时返回空数据
-	return []ImageModel{}, 0, nil
+	return []model.ImageDTO{}, 0, nil
 }
 
 func (service *ImageService) SaveImage(directory string, file *multipart.FileHeader, tags []string) (uint64, error) {
@@ -128,8 +110,8 @@ func (service *ImageService) SaveImage(directory string, file *multipart.FileHea
 	}
 
 	// 先查询是否存在
-	var image *ImageModel = &ImageModel{}
-	err = tx.Model(&ImageModel{}).Where("image_code = ?", imageCode).Find(image).Error
+	var image *model.ImageModel = &model.ImageModel{}
+	err = tx.Model(&model.ImageModel{}).Where("image_code = ?", imageCode).Find(image).Error
 	if err != nil {
 		tx.Rollback()
 		return 0, err
@@ -139,7 +121,7 @@ func (service *ImageService) SaveImage(directory string, file *multipart.FileHea
 	}
 
 	// 保存图片信息
-	image = &ImageModel{
+	image = &model.ImageModel{
 		ImageName: file.Filename,
 		ImageCode: imageCode,
 		Directory: directory,
@@ -154,7 +136,7 @@ func (service *ImageService) SaveImage(directory string, file *multipart.FileHea
 	// 处理标签
 	if len(tags) > 0 {
 		// 先删除旧的标签关联
-		if err := tx.Where("image_id = ?", image.ID).Delete(&ImageTagModel{}).Error; err != nil {
+		if err := tx.Where("image_id = ?", image.ID).Delete(&model.ImageTagModel{}).Error; err != nil {
 			tx.Rollback()
 			return 0, err
 		}
@@ -162,11 +144,11 @@ func (service *ImageService) SaveImage(directory string, file *multipart.FileHea
 		// 处理每个标签
 		for _, tagName := range tags {
 			// 查找或创建标签
-			var tag TagModel
+			var tag model.TagModel
 			if err := tx.Where("tag_name = ?", tagName).First(&tag).Error; err != nil {
 				if err == gorm.ErrRecordNotFound {
 					// 标签不存在，创建新标签
-					tag = TagModel{
+					tag = model.TagModel{
 						TagName: tagName,
 					}
 					if err := tx.Create(&tag).Error; err != nil {
@@ -180,7 +162,7 @@ func (service *ImageService) SaveImage(directory string, file *multipart.FileHea
 			}
 
 			// 创建标签关联
-			imageTag := &ImageTagModel{
+			imageTag := &model.ImageTagModel{
 				ImageID: image.ID,
 				TagID:   tag.ID,
 			}
@@ -197,4 +179,17 @@ func (service *ImageService) SaveImage(directory string, file *multipart.FileHea
 	}
 
 	return image.ID, nil
+}
+
+func (service *ImageService) GetTags() ([]string, error) {
+	var tags []model.TagModel
+	err := db.DB.Model(&model.TagModel{}).Order("created_at ASC").Find(&tags).Error
+	if err != nil {
+		return nil, err
+	}
+	tagList := make([]string, 0)
+	for _, tag := range tags {
+		tagList = append(tagList, tag.TagName)
+	}
+	return tagList, nil
 }

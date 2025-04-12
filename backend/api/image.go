@@ -1,9 +1,9 @@
 package api
 
 import (
-	"picture_storage/model"
 	"picture_storage/pkg/minio"
 	"picture_storage/service"
+	"picture_storage/utils"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -81,17 +81,7 @@ func (api *ImageAPI) GetImageList(c *gin.Context) {
 		return
 	}
 
-	if req.Page <= 0 {
-		req.Page = 1
-	}
-	if req.PageSize <= 0 {
-		req.PageSize = 10
-	}
-
-	pagination := model.Pagination{
-		Page:     req.Page,
-		PageSize: req.PageSize,
-	}
+	pagination := utils.GetPage(req.Page, req.PageSize)
 
 	images, total, err := imageService.GetImageListByDirectory(req.Directory, pagination)
 	if err != nil {
@@ -109,6 +99,13 @@ func (api *ImageAPI) GetImageList(c *gin.Context) {
 					"imageCode": image.ImageCode,
 					"url":       minio.Client.GetObjectURL(image.Directory, image.ImageCode+"."+image.Ext),
 					"ext":       image.Ext,
+					"tags": func() []string {
+						tags, err := imageService.GetTagsByImageID(image.ID)
+						if err != nil {
+							return []string{}
+						}
+						return tags
+					}(),
 					"size":      image.Size,
 					"directory": image.Directory,
 					"createdAt": image.CreatedAt,
@@ -118,4 +115,13 @@ func (api *ImageAPI) GetImageList(c *gin.Context) {
 		}(),
 		"total": total,
 	})
+}
+
+func (api *ImageAPI) GetTags(c *gin.Context) {
+	tags, err := imageService.GetTags()
+	if err != nil {
+		Fail(c, err.Error())
+		return
+	}
+	Success(c, tags)
 }

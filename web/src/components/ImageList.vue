@@ -56,8 +56,10 @@
           <el-image
             style="width: 100px; height: 100px"
             :src="row.url"
-            :preview-src-list="[row.url]"
+            :preview-src-list="imageURLList"
+            :initial-index="row.index"
             fit="cover"
+            preview-teleported
           />
         </template>
       </el-table-column>
@@ -66,7 +68,18 @@
           {{ formatFileSize(row.size) }}
         </template>
       </el-table-column>
-      <el-table-column prop="created_at" label="上传时间" />
+      <el-table-column prop="createdAt" label="上传时间">
+        <template #default="{ row }">
+          {{ dayjs(row.createdAt).format('YYYY-MM-DD HH:mm:ss') }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="tags" label="标签" >
+        <template #default="{ row }">
+          <div class="tags">
+            <el-tag v-for="tag in row.tags" :key="tag" type="success">{{ tag }}</el-tag>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="操作">
         <template #default="{ row }">
           <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
@@ -76,12 +89,11 @@
 
     <!-- 网格视图 -->
     <div v-else class="grid-view">
-      <el-checkbox-group v-model="selectedImages">
         <div v-for="image in imageList" :key="image.id" class="grid-item">
-          <el-checkbox :label="image.id">
             <el-image
               :src="image.url"
-              :preview-src-list="[image.url]"
+              :preview-src-list="imageURLList"
+              :initial-index="image.index"
               fit="cover"
               class="grid-image"
             />
@@ -89,9 +101,7 @@
               <div class="image-name">{{ image.name }}</div>
               <div class="image-size">{{ formatFileSize(image.size) }}</div>
             </div>
-          </el-checkbox>
         </div>
-      </el-checkbox-group>
     </div>
 
     <div class="pagination">
@@ -109,9 +119,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { apiGetImageList, apiDeleteImages } from '@/api-service/image-manage'
+import { ref, onMounted, computed } from 'vue'
+import { dayjs, ElMessage } from 'element-plus'
+import { apiGetImageList, apiDeleteImages, apiGetTags } from '@/api-service/image-manage'
 import type { ImageItem } from '@/api-service/image-manage'
 
 const props = defineProps({
@@ -122,7 +132,7 @@ const props = defineProps({
 })
 
 const viewMode = ref<'list' | 'grid'>('list')
-const imageList = ref<ImageItem[]>([])
+const imageList = ref<(ImageItem & { index: number })[]>([])
 const selectedImages = ref<number[]>([])
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -138,13 +148,17 @@ const fetchImageList = async () => {
   try {
     const response = await apiGetImageList(props.directory, currentPage.value, pageSize.value)
     if (response.data) {
-      imageList.value = response.data.list
+      imageList.value = response.data.list?.map((item, index) => ({ ...item, index })) || []
       total.value = response.data.total
     }
   } catch (error) {
     ElMessage.error('获取图片列表失败')
   }
 }
+
+const imageURLList = computed(() => {
+  return imageList.value.map(item => item.url)
+})
 
 const handleBeforeUpload = (file: File) => {
   uploadData.value.tags = selectedTags.value?.join(',') || ''
@@ -212,8 +226,16 @@ const formatFileSize = (size: number) => {
   }
 }
 
+const fetchTagOptions = async () => {
+  const response = await apiGetTags()
+  if (response.data) {
+    tagOptions.value = response.data || []
+  }
+}
+
 onMounted(() => {
   fetchImageList()
+  fetchTagOptions()
 })
 </script>
 
@@ -268,5 +290,11 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: center;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 </style> 

@@ -38,3 +38,7 @@ export function apiDeleteImages(ids: number[]) {
     ids,
   })
 }
+
+export function apiGetTags() {
+  return request.get<RequestResult<string[]>>("/api/tags")
+}
