@@ -25,11 +25,12 @@ export function apiUploadImage(directory: string, file: File) {
   })
 }
 
-export function apiGetImageList(directory: string, page: number, pageSize: number) {
-  return request.get<RequestResult<ImageListResponse>>("/api/images", {
+export function apiGetImageList(directory: string, tags: string[], page: number, pageSize: number) {
+  return request.post<RequestResult<ImageListResponse>>("/api/images", {
     directory,
     page,
     page_size: pageSize,
+    tags,
   })
 }
 

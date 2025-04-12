@@ -2,7 +2,24 @@
   <div class="image-list">
     <div class="toolbar">
       <div class="left">
+        <div>
+          <el-select
+            v-model="selectedTags"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            placeholder="请选择或输入标签"
+            style="width: 100%"
+          >
+            <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
+          </el-select>
+        </div>
+        <el-button type="primary" @click="handleSearch">搜索</el-button>
         <el-upload
+          multiple
+          :show-file-list="false"
+          accept="image/*"
           class="upload-demo"
           action="/api/upload"
           :on-success="handleUploadSuccess"
@@ -11,26 +28,6 @@
           :before-upload="handleBeforeUpload"
         >
           <el-button type="primary">上传图片</el-button>
-          <template #tip>
-            <div class="el-upload__tip">
-              <el-select
-                v-model="selectedTags"
-                multiple
-                filterable
-                allow-create
-                default-first-option
-                placeholder="请选择或输入标签"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="tag in tagOptions"
-                  :key="tag"
-                  :label="tag"
-                  :value="tag"
-                />
-              </el-select>
-            </div>
-          </template>
         </el-upload>
         <el-button type="danger" @click="handleBatchDelete">批量删除</el-button>
       </div>
@@ -70,10 +67,10 @@
       </el-table-column>
       <el-table-column prop="createdAt" label="上传时间">
         <template #default="{ row }">
-          {{ dayjs(row.createdAt).format('YYYY-MM-DD HH:mm:ss') }}
+          {{ dayjs(row.createdAt).format("YYYY-MM-DD HH:mm:ss") }}
         </template>
       </el-table-column>
-      <el-table-column prop="tags" label="标签" >
+      <el-table-column prop="tags" label="标签">
         <template #default="{ row }">
           <div class="tags">
             <el-tag v-for="tag in row.tags" :key="tag" type="success">{{ tag }}</el-tag>
@@ -89,19 +86,19 @@
 
     <!-- 网格视图 -->
     <div v-else class="grid-view">
-        <div v-for="image in imageList" :key="image.id" class="grid-item">
-            <el-image
-              :src="image.url"
-              :preview-src-list="imageURLList"
-              :initial-index="image.index"
-              fit="cover"
-              class="grid-image"
-            />
-            <div class="image-info">
-              <div class="image-name">{{ image.name }}</div>
-              <div class="image-size">{{ formatFileSize(image.size) }}</div>
-            </div>
+      <div v-for="image in imageList" :key="image.id" class="grid-item">
+        <el-image
+          :src="image.url"
+          :preview-src-list="imageURLList"
+          :initial-index="image.index"
+          fit="cover"
+          class="grid-image"
+        />
+        <div class="image-info">
+          <div class="image-name">{{ image.name }}</div>
+          <div class="image-size">{{ formatFileSize(image.size) }}</div>
         </div>
+      </div>
     </div>
 
     <div class="pagination">
@@ -119,89 +116,93 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { dayjs, ElMessage } from 'element-plus'
-import { apiGetImageList, apiDeleteImages, apiGetTags } from '@/api-service/image-manage'
-import type { ImageItem } from '@/api-service/image-manage'
-
+import { ref, onMounted, computed } from "vue"
+import { dayjs, ElMessage } from "element-plus"
+import { apiGetImageList, apiDeleteImages, apiGetTags } from "@/api-service/image-manage"
+import type { ImageItem } from "@/api-service/image-manage"
+import { formatFileSize } from "@/helper/file"
 const props = defineProps({
   directory: {
     type: String,
-    required: true
-  }
+    required: true,
+  },
 })
 
-const viewMode = ref<'list' | 'grid'>('list')
+const viewMode = ref<"list" | "grid">("grid")
 const imageList = ref<(ImageItem & { index: number })[]>([])
 const selectedImages = ref<number[]>([])
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(20)
 const total = ref(0)
 const selectedTags = ref<string[]>([])
 const tagOptions = ref<string[]>([])
 const uploadData = ref({
-  tags: '',
-  directory: ''
+  tags: "",
+  directory: "",
 })
 
 const fetchImageList = async () => {
   try {
-    const response = await apiGetImageList(props.directory, currentPage.value, pageSize.value)
+    const response = await apiGetImageList(props.directory, selectedTags.value, currentPage.value, pageSize.value)
     if (response.data) {
       imageList.value = response.data.list?.map((item, index) => ({ ...item, index })) || []
       total.value = response.data.total
     }
   } catch (error) {
-    ElMessage.error('获取图片列表失败')
+    ElMessage.error("获取图片列表失败")
   }
 }
 
 const imageURLList = computed(() => {
-  return imageList.value.map(item => item.url)
+  return imageList.value.map((item) => item.url)
 })
 
+const handleSearch = () => {
+  fetchImageList()
+}
+
 const handleBeforeUpload = (file: File) => {
-  uploadData.value.tags = selectedTags.value?.join(',') || ''
+  uploadData.value.tags = selectedTags.value?.join(",") || ""
   uploadData.value.directory = props.directory
   return true
 }
 
 const handleUploadSuccess = (response: any) => {
-  ElMessage.success('上传成功')
+  ElMessage.success("上传成功")
   selectedTags.value = []
   fetchImageList()
 }
 
 const handleUploadError = () => {
-  ElMessage.error('上传失败')
+  ElMessage.error("上传失败")
 }
 
 const handleBatchDelete = async () => {
   if (selectedImages.value.length === 0) {
-    ElMessage.warning('请选择要删除的图片')
+    ElMessage.warning("请选择要删除的图片")
     return
   }
   try {
     await apiDeleteImages(selectedImages.value)
-    ElMessage.success('删除成功')
+    ElMessage.success("删除成功")
     fetchImageList()
   } catch (error) {
-    ElMessage.error('删除失败')
+    ElMessage.error("删除失败")
   }
 }
 
 const handleDelete = async (image: ImageItem) => {
   try {
     await apiDeleteImages([image.id])
-    ElMessage.success('删除成功')
+    ElMessage.success("删除成功")
     fetchImageList()
   } catch (error) {
-    ElMessage.error('删除失败')
+    ElMessage.error("删除失败")
   }
 }
 
 const handleSelectionChange = (selection: ImageItem[]) => {
-  selectedImages.value = selection.map(item => item.id)
+  selectedImages.value = selection.map((item) => item.id)
 }
 
 const handleSizeChange = (val: number) => {
@@ -212,18 +213,6 @@ const handleSizeChange = (val: number) => {
 const handleCurrentChange = (val: number) => {
   currentPage.value = val
   fetchImageList()
-}
-
-const formatFileSize = (size: number) => {
-  if (size < 1024) {
-    return size + ' B'
-  } else if (size < 1024 * 1024) {
-    return (size / 1024).toFixed(2) + ' KB'
-  } else if (size < 1024 * 1024 * 1024) {
-    return (size / (1024 * 1024)).toFixed(2) + ' MB'
-  } else {
-    return (size / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
-  }
 }
 
 const fetchTagOptions = async () => {
@@ -270,6 +259,7 @@ onMounted(() => {
   width: 100%;
   height: 200px;
   object-fit: cover;
+  border-radius: 10px;
 }
 
 .image-info {
@@ -297,4 +287,4 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 5px;
 }
-</style> 
+</style>

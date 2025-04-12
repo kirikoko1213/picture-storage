@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"mime/multipart"
 	"path/filepath"
+	"picture_storage/cache"
 	"picture_storage/db"
 	"picture_storage/model"
 	"picture_storage/pkg/minio"
@@ -51,6 +53,10 @@ func (service *ImageService) UploadImage(directory string, file *multipart.FileH
 }
 
 func (service *ImageService) GetTagsByImageID(imageID uint64) ([]string, error) {
+	cacheKey := fmt.Sprintf("image_tags_%d", imageID)
+	if tags, err := cache.Get(cacheKey); err == nil {
+		return tags.([]string), nil
+	}
 	var tags []string
 	var imageTagList []model.ImageTagModel
 	err := db.DB.Model(&model.ImageTagModel{}).Where("image_id = ?", imageID).Find(&imageTagList).Error
@@ -65,23 +71,43 @@ func (service *ImageService) GetTagsByImageID(imageID uint64) ([]string, error) 
 		}
 		tags = append(tags, tag.TagName)
 	}
+	cache.Set(cacheKey, tags)
 	return tags, nil
 }
 
-func (service *ImageService) GetImageListByDirectory(directory string, page model.Pagination) ([]model.ImageModel, int64, error) {
+func (service *ImageService) GetImageListByDirectory(directory string, tags []string, page model.Pagination) ([]model.ImageModel, int64, error) {
 	imageList := make([]model.ImageModel, 0)
-	err := db.DB.Where("directory = ?", directory).
-		Offset((page.Page - 1) * page.PageSize).
-		Limit(page.PageSize).
-		Order("created_at DESC").
-		Find(&imageList).Error
-	if err != nil {
-		return nil, 0, err
-	}
 	var total int64
-	err = db.DB.Model(&model.ImageModel{}).Where("directory = ?", directory).Count(&total).Error
-	if err != nil {
-		return nil, 0, err
+	if len(tags) > 0 {
+		originalQuery := db.DB.Model(&model.ImageModel{}).Joins("JOIN image_tag ON image_tag.image_id = image.id").
+			Joins("JOIN tag ON image_tag.tag_id = tag.id").
+			Where("tag.tag_name IN ? and image.directory = ?", tags, directory)
+
+		originalQuery.Group("image.id").Count(&total)
+
+		result := originalQuery.
+			Offset((page.Page - 1) * page.PageSize).
+			Limit(page.PageSize).Distinct("image.*").Find(&imageList)
+
+		err := result.Error
+		if err != nil {
+			return nil, 0, err
+		}
+
+	} else {
+		originalQuery := db.DB.Where("directory = ?", directory).
+			Order("created_at DESC").
+			Find(&imageList)
+
+		originalQuery.Count(&total)
+
+		result := originalQuery.
+			Offset((page.Page - 1) * page.PageSize).
+			Limit(page.PageSize).Find(&imageList)
+		err := result.Error
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	return imageList, total, nil
 }

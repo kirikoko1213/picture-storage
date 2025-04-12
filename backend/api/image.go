@@ -76,14 +76,14 @@ type ImageListItem struct {
 
 func (api *ImageAPI) GetImageList(c *gin.Context) {
 	var req ImageListRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		Fail(c, "参数错误")
 		return
 	}
 
 	pagination := utils.GetPage(req.Page, req.PageSize)
 
-	images, total, err := imageService.GetImageListByDirectory(req.Directory, pagination)
+	images, total, err := imageService.GetImageListByDirectory(req.Directory, req.Tags, pagination)
 	if err != nil {
 		Fail(c, err.Error())
 		return
