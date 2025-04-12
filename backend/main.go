@@ -5,8 +5,6 @@ import (
 	"picture_storage/pkg/minio"
 
 	_ "github.com/kiririx/easy-config"
-	_ "github.com/openai/openai-go"
-	_ "github.com/redis/go-redis/v9"
 	_ "github.com/sirupsen/logrus"
 	_ "github.com/tidwall/gjson"
 	_ "gorm.io/driver/mysql"

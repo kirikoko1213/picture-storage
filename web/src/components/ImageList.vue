@@ -2,40 +2,72 @@
   <div class="image-list">
     <div class="toolbar">
       <div class="left">
-        <div>
-          <el-select
-            v-model="selectedTags"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            placeholder="请选择或输入标签"
-            style="width: 100%"
-          >
-            <el-option v-for="tag in tagOptions" :key="tag" :label="tag" :value="tag" />
-          </el-select>
-        </div>
-        <el-button type="primary" @click="handleSearch">搜索</el-button>
+        
+        <DirectorySelector @change-directory="handleChangeDirectory" />
+        <CustomButton theme="candy" @click="handleSearch">
+            <template #icon>
+                <SearchIcon color="#fff" :size="14"/>
+            </template>
+            <template #default>
+                搜索
+            </template>
+        </CustomButton>
         <el-upload
           multiple
           :show-file-list="false"
           accept="image/*"
-          class="upload-demo"
           action="/api/upload"
           :on-success="handleUploadSuccess"
           :on-error="handleUploadError"
           :data="uploadData"
           :before-upload="handleBeforeUpload"
         >
-          <el-button type="primary">上传图片</el-button>
+          <CustomButton theme="candy">
+            <template #icon>
+                <UploadIcon color="#fff" :size="14"/>
+            </template>
+            <template #default>
+                上传
+            </template>
+          </CustomButton>
         </el-upload>
-        <el-button type="danger" @click="handleBatchDelete">批量删除</el-button>
+        <CustomButton theme="candy" @click="handleBatchDelete">
+            <template #icon>
+                <DeleteIcon color="#fff" :size="15"/>
+            </template>
+            <template #default>
+                批量删除
+            </template>
+        </CustomButton>
       </div>
       <div class="right">
-        <el-radio-group v-model="viewMode" size="small">
-          <el-radio-button label="list">列表视图</el-radio-button>
-          <el-radio-button label="grid">网格视图</el-radio-button>
-        </el-radio-group>
+        <div>
+          <CustomSelect
+            theme="candy"
+            @change="(value) => (selectedTags = value)"
+            multiple
+            filterable
+            allow-create
+            placeholder="请选择或输入标签"
+            style="width: 100%"
+            :options="tagOptions.map((tag) => ({ label: tag, value: tag }))"
+          >
+          </CustomSelect>
+        </div>
+        <div
+          class="icon-container"
+          :class="{ active: viewMode === 'list' }"
+          @click="viewMode = 'list'"
+        >
+          <ListIcon color="#ff6b9c" />
+        </div>
+        <div
+          class="icon-container"
+          :class="{ active: viewMode === 'grid' }"
+          @click="viewMode = 'grid'"
+        >
+          <GridIcon color="#ff6b9c" />
+        </div>
       </div>
     </div>
 
@@ -121,12 +153,16 @@ import { dayjs, ElMessage } from "element-plus"
 import { apiGetImageList, apiDeleteImages, apiGetTags } from "@/api-service/image-manage"
 import type { ImageItem } from "@/api-service/image-manage"
 import { formatFileSize } from "@/helper/file"
-const props = defineProps({
-  directory: {
-    type: String,
-    required: true,
-  },
-})
+import GridIcon from "@/icons/GridIcon.vue"
+import ListIcon from "@/icons/ListIcon.vue"
+import DirectorySelector from "./DirectorySelector.vue"
+import CustomButton from "./CustomButton.vue"
+import CustomSelect from "./CustomSelect.vue"
+import SearchIcon from "@/icons/SearchIcon.vue"
+import UploadIcon from "@/icons/UploadIcon.vue"
+import DeleteIcon from "@/icons/DeleteIcon.vue"
+
+const selectedDirectory = ref("")
 
 const viewMode = ref<"list" | "grid">("grid")
 const imageList = ref<(ImageItem & { index: number })[]>([])
@@ -143,7 +179,12 @@ const uploadData = ref({
 
 const fetchImageList = async () => {
   try {
-    const response = await apiGetImageList(props.directory, selectedTags.value, currentPage.value, pageSize.value)
+    const response = await apiGetImageList(
+      selectedDirectory.value || "",
+      selectedTags.value,
+      currentPage.value,
+      pageSize.value,
+    )
     if (response.data) {
       imageList.value = response.data.list?.map((item, index) => ({ ...item, index })) || []
       total.value = response.data.total
@@ -151,6 +192,11 @@ const fetchImageList = async () => {
   } catch (error) {
     ElMessage.error("获取图片列表失败")
   }
+}
+
+const handleChangeDirectory = (directory: string) => {
+  selectedDirectory.value = directory
+  fetchImageList()
 }
 
 const imageURLList = computed(() => {
@@ -163,7 +209,7 @@ const handleSearch = () => {
 
 const handleBeforeUpload = (file: File) => {
   uploadData.value.tags = selectedTags.value?.join(",") || ""
-  uploadData.value.directory = props.directory
+  uploadData.value.directory = selectedDirectory.value
   return true
 }
 
@@ -237,11 +283,34 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   margin-bottom: 20px;
-}
-
-.left {
-  display: flex;
-  gap: 10px;
+  .left {
+    display: flex;
+    gap: 10px;
+  }
+  .right {
+    display: flex;
+    gap: 10px;
+    .icon-container {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      padding: 4px;
+      border-radius: 10px;
+      transition: all 0.3s ease;
+      svg {
+        color: #bac6d2;
+      }
+      &:hover {
+        background-color: #f0f0f0;
+      }
+    }
+    .active {
+      background-color: #ffd6e7;
+      svg {
+        color: #ff6b9c;
+      }
+    }
+  }
 }
 
 .grid-view {
@@ -269,6 +338,8 @@ onMounted(() => {
 .image-name {
   font-size: 14px;
   margin-bottom: 5px;
+  color: #333;
+  font-weight: 500;
 }
 
 .image-size {
@@ -280,11 +351,96 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: center;
+  .el-pagination {
+    --el-pagination-button-bg-color: #fff;
+    --el-pagination-hover-color: #ff6b9c;
+    .el-pager li {
+      border-radius: 10px;
+      &.is-active {
+        background-color: #ff6b9c;
+      }
+    }
+  }
 }
 
 .tags {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  .el-tag {
+    border-radius: 10px;
+    padding: 0 10px;
+    height: 24px;
+    line-height: 24px;
+    background-color: #ffd6e7;
+    border-color: #ffd6e7;
+    color: #ff6b9c;
+  }
+}
+
+.el-table {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  .el-table__header {
+    th {
+      background-color: #ffd6e7;
+      color: #ff6b9c;
+      font-weight: 600;
+    }
+  }
+  .el-table__row {
+    &:hover {
+      background-color: #fff5f9;
+    }
+  }
+  .el-button {
+    border-radius: 10px;
+    padding: 6px 12px;
+  }
+}
+
+.directory-container {
+  padding: 8px 0;
+}
+
+.directory-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 10px;
+  margin-bottom: 5px;
+}
+
+.directory-item:hover {
+  background-color: #f0f2f5;
+}
+
+.directory-item.active {
+  background-color: #ffd6e7;
+  color: #ff6b9c;
+}
+
+:deep(.el-dialog) {
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+:deep(.el-dialog__header) {
+  background-color: #ffd6e7;
+  margin: 0;
+  padding: 15px 20px;
+}
+
+:deep(.el-dialog__title) {
+  color: #ff6b9c;
+  font-weight: 600;
+}
+
+:deep(.el-dialog__body) {
+  padding: 20px;
 }
 </style>
