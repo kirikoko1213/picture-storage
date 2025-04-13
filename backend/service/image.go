@@ -1,7 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
+	"io"
 	"mime/multipart"
 	"path/filepath"
 	"picture_storage/cache"
@@ -10,6 +15,7 @@ import (
 	"picture_storage/pkg/minio"
 	"strings"
 
+	"github.com/disintegration/imaging"
 	"gorm.io/gorm"
 )
 
@@ -118,9 +124,76 @@ func (service *ImageService) GetImageListByTag(directory string, tag string, pag
 	return []model.ImageDTO{}, 0, nil
 }
 
+// 根据图片类型创建缩略图
+func (service *ImageService) createThumbnail(file *multipart.FileHeader, maxWidth, maxHeight int) ([]byte, error) {
+	// 打开上传的文件
+	src, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+
+	// 读取文件内容
+	fileBytes, err := io.ReadAll(src)
+	if err != nil {
+		return nil, err
+	}
+
+	// 解码图片
+	img, format, err := image.Decode(bytes.NewReader(fileBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	// 使用imaging库调整图片大小，保持宽高比
+	resizedImg := imaging.Fit(img, maxWidth, maxHeight, imaging.Lanczos)
+
+	// 编码为相应格式
+	var buffer bytes.Buffer
+	switch format {
+	case "jpeg", "jpg":
+		err = jpeg.Encode(&buffer, resizedImg, &jpeg.Options{Quality: 85})
+	case "png":
+		err = png.Encode(&buffer, resizedImg)
+	default:
+		// 默认使用JPEG
+		err = jpeg.Encode(&buffer, resizedImg, &jpeg.Options{Quality: 85})
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
+}
+
+// 上传缩略图到MinIO
+func (service *ImageService) uploadThumbnail(directory string, originalFilename string, thumbnailData []byte, contentType string) (string, int64, error) {
+	// 计算文件内容的MD5
+	fileSize := int64(len(thumbnailData))
+	md5WithExt, size, err := minio.Client.UploadFileBytes(directory, originalFilename, fileSize, thumbnailData, contentType)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return md5WithExt, size, nil
+}
+
 func (service *ImageService) SaveImage(directory string, file *multipart.FileHeader, tags []string) (uint64, error) {
-	// 上传到 MinIO
+	// 上传原图到 MinIO
 	imageCodeWithExt, size, err := service.UploadImage(directory, file)
+	if err != nil {
+		return 0, err
+	}
+
+	// 生成缩略图
+	thumbnailData, err := service.createThumbnail(file, 600, 600)
+	if err != nil {
+		return 0, err
+	}
+
+	// 上传缩略图到 MinIO
+	thumbnailCodeWithExt, _, err := service.uploadThumbnail("tmp-thumbnail", file.Filename, thumbnailData, file.Header.Get("Content-Type"))
 	if err != nil {
 		return 0, err
 	}
@@ -148,11 +221,12 @@ func (service *ImageService) SaveImage(directory string, file *multipart.FileHea
 
 	// 保存图片信息
 	image = &model.ImageModel{
-		ImageName: file.Filename,
-		ImageCode: imageCode,
-		Directory: directory,
-		Ext:       extension,
-		Size:      size,
+		ImageName:     file.Filename,
+		ImageCode:     imageCode,
+		Directory:     directory,
+		Ext:           extension,
+		Size:          size,
+		ThumbnailCode: strings.TrimSuffix(thumbnailCodeWithExt, filepath.Ext(thumbnailCodeWithExt)),
 	}
 	if err := tx.Create(image).Error; err != nil {
 		tx.Rollback()

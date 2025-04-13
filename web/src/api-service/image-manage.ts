@@ -5,6 +5,7 @@ export interface ImageItem {
   id: number
   name: string
   url: string
+  thumbnailUrl: string
   size: number
   created_at: string
 }
@@ -42,4 +43,11 @@ export function apiDeleteImages(ids: number[]) {
 
 export function apiGetTags() {
   return request.get<RequestResult<string[]>>("/api/tags")
+}
+
+export function apiAddTags(imageIds: number[], tags: string[]) {
+  return request.post<RequestResult<any>>("/api/tags/add", {
+    image_ids: imageIds,
+    tags,
+  })
 }

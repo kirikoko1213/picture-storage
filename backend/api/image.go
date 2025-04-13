@@ -36,7 +36,6 @@ func (api *ImageAPI) UploadImage(c *gin.Context) {
 		return
 	}
 
-	// 保存到数据库
 	tags := ut.Then(len(req.Tags) > 0, strings.Split(req.Tags, ","), []string{})
 	imageID, err := imageService.SaveImage(req.Directory, file, tags)
 	if err != nil {
@@ -94,11 +93,12 @@ func (api *ImageAPI) GetImageList(c *gin.Context) {
 			list := make([]map[string]any, 0)
 			for _, image := range images {
 				list = append(list, map[string]any{
-					"id":        image.ID,
-					"imageName": image.ImageName,
-					"imageCode": image.ImageCode,
-					"url":       minio.Client.GetObjectURL(image.Directory, image.ImageCode+"."+image.Ext),
-					"ext":       image.Ext,
+					"id":           image.ID,
+					"imageName":    image.ImageName,
+					"imageCode":    image.ImageCode,
+					"url":          minio.Client.GetObjectURL(image.Directory, image.ImageCode+"."+image.Ext),
+					"thumbnailUrl": minio.Client.GetObjectURL("tmp-thumbnail", image.ThumbnailCode+"."+image.Ext),
+					"ext":          image.Ext,
 					"tags": func() []string {
 						tags, err := imageService.GetTagsByImageID(image.ID)
 						if err != nil {

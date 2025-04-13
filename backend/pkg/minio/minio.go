@@ -82,6 +82,48 @@ func (m *MinioClient) UploadFile(bucketName, originalFilename string, fileSize i
 	return objectName, uploadInfo.Size, nil
 }
 
+func (m *MinioClient) UploadFileBytes(bucketName, originalFilename string, fileSize int64, content []byte, contentType string) (string, int64, error) {
+	ctx := context.Background()
+
+	// 计算文件内容的 MD5
+	hash := md5.New()
+	hash.Write(content)
+	md5Hash := hex.EncodeToString(hash.Sum(nil))
+
+	// 获取文件扩展名
+	ext := filepath.Ext(originalFilename)
+	// 使用 MD5 作为文件名，保留原始扩展名
+	objectName := md5Hash + ext
+
+	// 确保桶存在
+	exists, err := m.client.BucketExists(ctx, bucketName)
+	if err != nil {
+		return "", 0, err
+	}
+	if !exists {
+		err = m.client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{})
+		if err != nil {
+			return "", 0, err
+		}
+	}
+
+	// 检查文件是否已存在
+	info, err := m.client.StatObject(ctx, bucketName, objectName, minio.StatObjectOptions{})
+	if err == nil {
+		return objectName, info.Size, nil
+	}
+
+	// 上传文件
+	uploadInfo, err := m.client.PutObject(ctx, bucketName, objectName, bytes.NewReader(content), fileSize, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return "", 0, err
+	}
+
+	return objectName, uploadInfo.Size, nil
+}
+
 func (m *MinioClient) GetDirectoryList() ([]minio.BucketInfo, error) {
 	ctx := context.Background()
 

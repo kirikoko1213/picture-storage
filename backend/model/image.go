@@ -8,13 +8,14 @@ type ImageDTO struct {
 }
 
 type ImageModel struct {
-	ID        uint64    `json:"id" gorm:"column:id;primary_key;auto_increment"`
-	ImageName string    `json:"image_name" gorm:"column:image_name"`
-	ImageCode string    `json:"image_code" gorm:"column:image_code"`
-	Ext       string    `json:"ext" gorm:"column:ext"`
-	Size      int64     `json:"size" gorm:"column:size"`
-	Directory string    `json:"directory" gorm:"column:directory"`
-	CreatedAt time.Time `json:"created_at" gorm:"column:created_at"`
+	ID            uint64    `json:"id" gorm:"column:id;primary_key;auto_increment"`
+	ImageName     string    `json:"image_name" gorm:"column:image_name"`
+	ImageCode     string    `json:"image_code" gorm:"column:image_code"`
+	ThumbnailCode string    `json:"thumbnail_code" gorm:"column:thumbnail_code"`
+	Ext           string    `json:"ext" gorm:"column:ext"`
+	Size          int64     `json:"size" gorm:"column:size"`
+	Directory     string    `json:"directory" gorm:"column:directory"`
+	CreatedAt     time.Time `json:"created_at" gorm:"column:created_at"`
 }
 
 type ImageTagModel struct {
