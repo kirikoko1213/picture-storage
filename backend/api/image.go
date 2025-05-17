@@ -143,3 +143,19 @@ func (api *ImageAPI) DeleteImages(c *gin.Context) {
 
 	Success(c, nil)
 }
+
+func (api *ImageAPI) AddTags(c *gin.Context) {
+	var req struct {
+		ImageIDs []uint64 `json:"image_ids"`
+		Tags     []string `json:"tags"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, "参数错误")
+		return
+	}
+	if err := imageService.AddTags(req.ImageIDs, req.Tags); err != nil {
+		Fail(c, err.Error())
+		return
+	}
+	Success(c, nil)
+}

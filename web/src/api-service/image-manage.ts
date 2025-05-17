@@ -6,6 +6,7 @@ export interface ImageItem {
   name: string
   url: string
   thumbnailUrl: string
+  tags: string[]
   size: number
   created_at: string
 }
@@ -46,7 +47,7 @@ export function apiGetTags() {
 }
 
 export function apiAddTags(imageIds: number[], tags: string[]) {
-  return request.post<RequestResult<any>>("/api/tags/add", {
+  return request.post<RequestResult<any>>("/api/images/tags", {
     image_ids: imageIds,
     tags,
   })

@@ -166,6 +166,9 @@
             />
             <div class="image-info">
               <div class="image-name">{{ image.name }}</div>
+              <div class="image-tags">
+                <el-tag v-for="tag in image.tags" :key="tag" type="success" size="small">{{ tag }}</el-tag>
+              </div>
               <div class="image-size">{{ formatFileSize(image.size) }}</div>
             </div>
           </div>
@@ -317,7 +320,7 @@ const handleSelectionChange = (selection: EnhancedImageItem[]) => {
 
 const handleAddTag = async () => {
   const response = await apiAddTags(selectedImageIds.value, selectedTags.value)
-  if (response.data) {
+  if (response.status === "success") {
     ElMessage.success("添加标签成功")
     fetchImageList()
     tagPopoverVisible.value = false
@@ -412,7 +415,7 @@ onMounted(() => {
 .grid-item {
   position: relative;
   width: 220px;
-  height: 250px;
+  height: 280px;
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
@@ -483,6 +486,23 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.image-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 5px;
+  .el-tag {
+    border-radius: 10px;
+    padding: 0 8px;
+    height: 20px;
+    line-height: 20px;
+    background-color: #ffd6e7;
+    border-color: #ffd6e7;
+    color: #ff6b9c;
+    font-size: 12px;
+  }
 }
 
 .image-size {

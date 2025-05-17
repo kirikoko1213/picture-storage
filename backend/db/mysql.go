@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 
@@ -38,6 +39,8 @@ func InitMySQL() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to MySQL: %v", err)
 	}
+
+	log.Default().Println("[mysql] dsn: ", dsn)
 
 	return nil
 }

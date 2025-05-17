@@ -2,14 +2,12 @@ package service
 
 import (
 	"bytes"
-	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"io"
 	"mime/multipart"
 	"path/filepath"
-	"picture_storage/cache"
 	"picture_storage/db"
 	"picture_storage/model"
 	"picture_storage/pkg/minio"
@@ -59,10 +57,10 @@ func (service *ImageService) UploadImage(directory string, file *multipart.FileH
 }
 
 func (service *ImageService) GetTagsByImageID(imageID uint64) ([]string, error) {
-	cacheKey := fmt.Sprintf("image_tags_%d", imageID)
-	if tags, err := cache.Get(cacheKey); err == nil {
-		return tags.([]string), nil
-	}
+	//cacheKey := fmt.Sprintf("image_tags_%d", imageID)
+	//if tags, err := cache.Get(cacheKey); err == nil {
+	//	return tags.([]string), nil
+	//}
 	var tags []string
 	var imageTagList []model.ImageTagModel
 	err := db.DB.Model(&model.ImageTagModel{}).Where("image_id = ?", imageID).Find(&imageTagList).Error
@@ -77,7 +75,7 @@ func (service *ImageService) GetTagsByImageID(imageID uint64) ([]string, error) 
 		}
 		tags = append(tags, tag.TagName)
 	}
-	cache.Set(cacheKey, tags)
+	//cache.Set(cacheKey, tags)
 	return tags, nil
 }
 
@@ -323,6 +321,50 @@ func (service *ImageService) DeleteImages(ids []int) error {
 			return err
 		}
 	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func (service *ImageService) AddTags(imageIDs []uint64, tags []string) error {
+	tx := db.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	for _, tagName := range tags {
+		var tag model.TagModel
+		if err := tx.Where("tag_name = ?", tagName).First(&tag).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				tag = model.TagModel{
+					TagName: tagName,
+				}
+				if err := tx.Create(&tag).Error; err != nil {
+					tx.Rollback()
+					return err
+				}
+			} else {
+				tx.Rollback()
+				return err
+			}
+		}
+		for _, imageID := range imageIDs {
+			imageTag := &model.ImageTagModel{
+				ImageID: imageID,
+				TagID:   tag.ID,
+			}
+			if err := tx.Where("image_id = ? AND tag_id = ?", imageID, tag.ID).First(&model.ImageTagModel{}).Error; err != nil {
+				if err == gorm.ErrRecordNotFound {
+					if err := tx.Create(imageTag).Error; err != nil {
+						tx.Rollback()
+						return err
+					}
+				}
+			}
+		}
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		return err
 	}
