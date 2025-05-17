@@ -36,7 +36,7 @@ export function apiGetImageList(directory: string, tags: string[], page: number,
 }
 
 export function apiDeleteImages(ids: number[]) {
-  return request.post<RequestResult<any>>("/api/images/delete", {
+  return request.delete<RequestResult<any>>("/api/images", {
     ids,
   })
 }

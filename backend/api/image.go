@@ -125,3 +125,21 @@ func (api *ImageAPI) GetTags(c *gin.Context) {
 	}
 	Success(c, tags)
 }
+
+func (api *ImageAPI) DeleteImages(c *gin.Context) {
+	var req struct {
+		IDs []int `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, "参数错误")
+		return
+	}
+
+	err := imageService.DeleteImages(req.IDs)
+	if err != nil {
+		Fail(c, err.Error())
+		return
+	}
+
+	Success(c, nil)
+}

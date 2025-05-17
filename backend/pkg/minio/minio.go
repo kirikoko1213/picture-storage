@@ -136,6 +136,11 @@ func (m *MinioClient) GetDirectoryList() ([]minio.BucketInfo, error) {
 	return objects, nil
 }
 
+func (m *MinioClient) DeleteFile(bucketName, objectName string) error {
+	ctx := context.Background()
+	return m.client.RemoveObject(ctx, bucketName, objectName, minio.RemoveObjectOptions{})
+}
+
 func NewMinioClient(endpoint, accessKeyID, secretAccessKey string, useSSL bool) *MinioClient {
 	// 初始化 MinIO 客户端
 	minioClient, err := minio.New(endpoint, &minio.Options{

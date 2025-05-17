@@ -293,3 +293,38 @@ func (service *ImageService) GetTags() ([]string, error) {
 	}
 	return tagList, nil
 }
+
+func (service *ImageService) DeleteImages(ids []int) error {
+	tx := db.DB.Begin()
+
+	for _, id := range ids {
+		var image model.ImageModel
+		if err := tx.Where("id = ?", id).First(&image).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("image_id = ?", id).Delete(&model.ImageTagModel{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Where("id = ?", id).Delete(&model.ImageModel{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		// 同时删除 minio 的图片
+		imageCodeWithExt := image.ImageCode + "." + image.Ext
+		thumbnailCodeWithExt := image.ThumbnailCode + ".jpg"
+		if err := minio.Client.DeleteFile(image.Directory, imageCodeWithExt); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := minio.Client.DeleteFile("tmp-thumbnail", thumbnailCodeWithExt); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	return nil
+}
