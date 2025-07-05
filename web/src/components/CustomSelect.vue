@@ -94,7 +94,6 @@ const handleSearch = () => {
 
 :deep(.el-select__wrapper) {
   border-radius: 10px;
-  height: 38px;
 }
 
 /* 糖果主题 */

@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -56,6 +57,61 @@ func (service *ImageService) UploadImage(directory string, file *multipart.FileH
 	return md5WithExt, size, nil
 }
 
+func (service *ImageService) GetTagsByImageIDs(imageIDs []uint64) (map[uint64][]string, error) {
+	if len(imageIDs) == 0 {
+		return make(map[uint64][]string), nil
+	}
+
+	// 初始化结果映射
+	result := make(map[uint64][]string)
+	for _, id := range imageIDs {
+		result[id] = make([]string, 0)
+	}
+
+	// 查询所有相关的图片标签关联
+	var imageTagList []model.ImageTagModel
+	err := db.DB.Model(&model.ImageTagModel{}).
+		Where("image_id IN ?", imageIDs).
+		Find(&imageTagList).Error
+	if err != nil {
+		return nil, err
+	}
+
+	if len(imageTagList) == 0 {
+		return result, nil
+	}
+
+	// 获取所有标签ID
+	tagIDs := make([]uint64, 0)
+	for _, imageTag := range imageTagList {
+		tagIDs = append(tagIDs, imageTag.TagID)
+	}
+
+	// 查询所有标签信息
+	var tags []model.TagModel
+	err = db.DB.Model(&model.TagModel{}).
+		Where("id IN ?", tagIDs).
+		Find(&tags).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// 构建标签ID到标签名的映射
+	tagMap := make(map[uint64]string)
+	for _, tag := range tags {
+		tagMap[tag.ID] = tag.TagName
+	}
+
+	// 构建最终结果
+	for _, imageTag := range imageTagList {
+		if tagName, exists := tagMap[imageTag.TagID]; exists {
+			result[imageTag.ImageID] = append(result[imageTag.ImageID], tagName)
+		}
+	}
+
+	return result, nil
+}
+
 func (service *ImageService) GetTagsByImageID(imageID uint64) ([]string, error) {
 	//cacheKey := fmt.Sprintf("image_tags_%d", imageID)
 	//if tags, err := cache.Get(cacheKey); err == nil {
@@ -83,31 +139,51 @@ func (service *ImageService) GetImageListByDirectory(directory string, tags []st
 	imageList := make([]model.ImageModel, 0)
 	var total int64
 	if len(tags) > 0 {
-		originalQuery := db.DB.Model(&model.ImageModel{}).Joins("JOIN image_tag ON image_tag.image_id = image.id").
+		// 查询同时拥有所有指定标签的图片
+		// 使用 GROUP BY 和 HAVING 来确保图片拥有所有指定的标签
+		baseQuery := db.DB.Model(&model.ImageModel{}).
+			Joins("JOIN image_tag ON image_tag.image_id = image.id").
 			Joins("JOIN tag ON image_tag.tag_id = tag.id").
-			Where("tag.tag_name IN ? and image.directory = ?", tags, directory)
+			Where("tag.tag_name IN ? AND image.directory = ?", tags, directory).
+			Group("image.id").
+			Having("COUNT(DISTINCT tag.id) = ?", len(tags))
 
-		originalQuery.Group("image.id").Count(&total)
+		// 统计总数
+		var countResult []struct {
+			ID uint64
+		}
+		err := baseQuery.Select("image.id").Find(&countResult).Error
+		if err != nil {
+			return nil, 0, err
+		}
+		total = int64(len(countResult))
 
-		result := originalQuery.
+		// 查询具体数据
+		result := baseQuery.
+			Order("image.created_at DESC").
 			Offset((page.Page - 1) * page.PageSize).
-			Limit(page.PageSize).Distinct("image.*").Find(&imageList)
+			Limit(page.PageSize).
+			Select("image.*").
+			Find(&imageList)
 
-		err := result.Error
+		err = result.Error
 		if err != nil {
 			return nil, 0, err
 		}
 
 	} else {
-		originalQuery := db.DB.Where("directory = ?", directory).
-			Order("created_at DESC").
-			Find(&imageList)
+		// 没有标签筛选时，查询该目录下的所有图片
+		baseQuery := db.DB.Where("directory = ?", directory).
+			Order("created_at DESC")
 
-		originalQuery.Count(&total)
+		// 统计总数
+		baseQuery.Model(&model.ImageModel{}).Count(&total)
 
-		result := originalQuery.
+		// 查询具体数据
+		result := baseQuery.
 			Offset((page.Page - 1) * page.PageSize).
-			Limit(page.PageSize).Find(&imageList)
+			Limit(page.PageSize).
+			Find(&imageList)
 		err := result.Error
 		if err != nil {
 			return nil, 0, err
@@ -369,4 +445,109 @@ func (service *ImageService) AddTags(imageIDs []uint64, tags []string) error {
 		return err
 	}
 	return nil
+}
+
+type TagDetailItem struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
+func (service *ImageService) GetTagDetails() ([]TagDetailItem, error) {
+	var tags []model.TagModel
+	err := db.DB.Model(&model.TagModel{}).Order("created_at ASC").Find(&tags).Error
+	if err != nil {
+		return nil, err
+	}
+
+	tagDetails := make([]TagDetailItem, 0)
+	for _, tag := range tags {
+		// 统计每个标签的图片数量
+		var count int64
+		err := db.DB.Table("image_tag").
+			Joins("JOIN image ON image_tag.image_id = image.id").
+			Where("image_tag.tag_id = ?", tag.ID).
+			Count(&count).Error
+		if err != nil {
+			return nil, err
+		}
+
+		tagDetails = append(tagDetails, TagDetailItem{
+			Name:  tag.TagName,
+			Count: count,
+		})
+	}
+
+	return tagDetails, nil
+}
+
+func (service *ImageService) CreateTag(tagName string) error {
+	// 检查标签是否已存在
+	var existingTag model.TagModel
+	err := db.DB.Where("tag_name = ?", tagName).First(&existingTag).Error
+	if err == nil {
+		return fmt.Errorf("标签 '%s' 已存在", tagName)
+	}
+	if err != gorm.ErrRecordNotFound {
+		return err
+	}
+
+	// 创建新标签
+	tag := model.TagModel{
+		TagName: tagName,
+	}
+	return db.DB.Create(&tag).Error
+}
+
+func (service *ImageService) UpdateTag(oldName, newName string) error {
+	// 检查旧标签是否存在
+	var tag model.TagModel
+	err := db.DB.Where("tag_name = ?", oldName).First(&tag).Error
+	if err != nil {
+		return err
+	}
+
+	// 检查新标签名是否已存在
+	if oldName != newName {
+		var existingTag model.TagModel
+		err := db.DB.Where("tag_name = ?", newName).First(&existingTag).Error
+		if err == nil {
+			return fmt.Errorf("标签 '%s' 已存在", newName)
+		}
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+	}
+
+	// 更新标签名
+	return db.DB.Model(&tag).Update("tag_name", newName).Error
+}
+
+func (service *ImageService) DeleteTag(tagName string) error {
+	// 查找标签
+	var tag model.TagModel
+	err := db.DB.Where("tag_name = ?", tagName).First(&tag).Error
+	if err != nil {
+		return err
+	}
+
+	// 开启事务
+	tx := db.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	// 删除标签关联
+	if err := tx.Where("tag_id = ?", tag.ID).Delete(&model.ImageTagModel{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 删除标签
+	if err := tx.Where("id = ?", tag.ID).Delete(&model.TagModel{}).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 提交事务
+	return tx.Commit().Error
 }

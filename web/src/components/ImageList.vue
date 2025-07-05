@@ -36,17 +36,16 @@
         </CustomButton>
         <el-popover trigger="click" width="200px" :visible="tagPopoverVisible">
           <template #reference>
-            <CustomButton theme="candy" @click="tagPopoverVisible = true">
+            <CustomButton theme="candy" @click="openTagPopover">
               <template #default> 加标签 </template>
             </CustomButton>
           </template>
           <div class="popover-content">
             <CustomSelect
               theme="candy"
-              @change="(value) => (selectedTags = value)"
+              @change="(value) => (addedTags = value)"
               multiple
               filterable
-              allow-create
               placeholder="请选择或输入标签"
               style="width: 100%"
               :options="tagOptions.map((tag) => ({ label: tag, value: tag }))"
@@ -141,7 +140,7 @@
 
     <!-- 网格视图 -->
     <div v-else class="grid-view">
-      <el-scrollbar height="calc(100vh - 200px)">
+      <el-scrollbar height="calc(100vh - 373px)">
         <el-space wrap>
           <div
             v-for="image in imageList"
@@ -192,7 +191,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue"
-import { dayjs, ElMessage } from "element-plus"
+import { dayjs, ElMessage, ElMessageBox } from "element-plus"
 import { apiGetImageList, apiDeleteImages, apiGetTags, apiAddTags } from "@/api-service/image-manage"
 import type { ImageItem } from "@/api-service/image-manage"
 import { formatFileSize } from "@/helper/file"
@@ -221,6 +220,7 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const selectedTags = ref<string[]>([])
+const addedTags = ref<string[]>([])
 const tagOptions = ref<string[]>([])
 const uploadData = ref({
   tags: "",
@@ -230,8 +230,12 @@ const selectedImageIds = ref<number[]>([])
 
 const fetchImageList = async () => {
   try {
+    if (!selectedDirectory.value) {
+      return;
+    }
+    selectedImageIds.value = [];
     const response = await apiGetImageList(
-      selectedDirectory.value || "",
+      selectedDirectory.value,
       selectedTags.value,
       currentPage.value,
       pageSize.value,
@@ -272,7 +276,6 @@ const handleBeforeUpload = (file: File) => {
 
 const handleUploadSuccess = (response: any) => {
   ElMessage.success("上传成功")
-  selectedTags.value = []
   fetchImageList()
 }
 
@@ -285,14 +288,20 @@ const handleBatchDelete = async () => {
     ElMessage.warning("请选择要删除的图片")
     return
   }
-  try {
-    await apiDeleteImages(selectedImageIds.value)
-    ElMessage.success("删除成功")
-    fetchImageList()
-    selectedImageIds.value = []
-  } catch (error) {
-    ElMessage.error("删除失败")
-  }
+  ElMessageBox.confirm("确定删除吗？", "提示", {
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
+    type: "warning",
+  }).then(async () => {
+    try {
+      await apiDeleteImages(selectedImageIds.value)
+      ElMessage.success("删除成功")
+      fetchImageList()
+      selectedImageIds.value = []
+    } catch (error) {
+      ElMessage.error("删除失败")
+    }
+  })
 }
 
 const handleDelete = async (image: ImageItem) => {
@@ -319,7 +328,7 @@ const handleSelectionChange = (selection: EnhancedImageItem[]) => {
 }
 
 const handleAddTag = async () => {
-  const response = await apiAddTags(selectedImageIds.value, selectedTags.value)
+  const response = await apiAddTags(selectedImageIds.value, addedTags.value)
   if (response.status === "success") {
     ElMessage.success("添加标签成功")
     fetchImageList()
@@ -362,6 +371,15 @@ const isAllSelected = computed(() => {
   }
   return false
 })
+
+const openTagPopover = () => {
+  if (selectedImageIds.value.length === 0) {
+    ElMessage.warning("请选择要添加标签的图片")
+    return
+  }
+  tagPopoverVisible.value = true
+  selectedTags.value = []
+}
 
 onMounted(() => {
   fetchImageList()
@@ -620,5 +638,9 @@ onMounted(() => {
   .custom-button {
     width: 50%;
   }
+}
+
+:deep(.el-scrollbar__wrap) {
+  padding-bottom: 30px;
 }
 </style>

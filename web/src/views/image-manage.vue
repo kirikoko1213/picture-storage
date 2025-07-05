@@ -1,7 +1,7 @@
 <template>
   <div class="common-layout">
     <el-container>
-      <el-main>
+      <el-main style="height: calc(100vh - 150px);">
         <ImageList />
       </el-main>
     </el-container>

@@ -16,6 +16,15 @@ export interface ImageListResponse {
   total: number
 }
 
+export interface TagItem {
+  name: string
+  count: number
+}
+
+export interface TagListResponse {
+  list: TagItem[]
+}
+
 export function apiGetDirectoryList() {
   return request.get<RequestResult<string[]>>("/api/directory")
 }
@@ -44,6 +53,29 @@ export function apiDeleteImages(ids: number[]) {
 
 export function apiGetTags() {
   return request.get<RequestResult<string[]>>("/api/tags")
+}
+
+export function apiGetTagDetails() {
+  return request.get<RequestResult<TagListResponse>>("/api/tags/details")
+}
+
+export function apiCreateTag(name: string) {
+  return request.post<RequestResult<any>>("/api/tags", {
+    name,
+  })
+}
+
+export function apiDeleteTag(name: string) {
+  return request.delete<RequestResult<any>>("/api/tags", {
+    name,
+  })
+}
+
+export function apiUpdateTag(oldName: string, newName: string) {
+  return request.put<RequestResult<any>>("/api/tags", {
+    old_name: oldName,
+    new_name: newName,
+  })
 }
 
 export function apiAddTags(imageIds: number[], tags: string[]) {

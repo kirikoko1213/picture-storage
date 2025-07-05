@@ -88,8 +88,17 @@ func (api *ImageAPI) GetImageList(c *gin.Context) {
 		return
 	}
 
+	imageIDs := make([]uint64, 0)
+	for _, image := range images {
+		imageIDs = append(imageIDs, image.ID)
+	}
+
 	Success(c, gin.H{
 		"list": func() []map[string]any {
+			tagMap, err := imageService.GetTagsByImageIDs(imageIDs)
+			if err != nil {
+				return []map[string]any{}
+			}
 			list := make([]map[string]any, 0)
 			for _, image := range images {
 				list = append(list, map[string]any{
@@ -100,11 +109,7 @@ func (api *ImageAPI) GetImageList(c *gin.Context) {
 					"thumbnailUrl": minio.Client.GetObjectURL("tmp-thumbnail", image.ThumbnailCode+"."+image.Ext),
 					"ext":          image.Ext,
 					"tags": func() []string {
-						tags, err := imageService.GetTagsByImageID(image.ID)
-						if err != nil {
-							return []string{}
-						}
-						return tags
+						return tagMap[image.ID]
 					}(),
 					"size":      image.Size,
 					"directory": image.Directory,
@@ -157,5 +162,75 @@ func (api *ImageAPI) AddTags(c *gin.Context) {
 		Fail(c, err.Error())
 		return
 	}
+	Success(c, nil)
+}
+
+// 获取标签详情（包含图片数量）
+func (api *ImageAPI) GetTagDetails(c *gin.Context) {
+	tagDetails, err := imageService.GetTagDetails()
+	if err != nil {
+		Fail(c, err.Error())
+		return
+	}
+	Success(c, gin.H{
+		"list": tagDetails,
+	})
+}
+
+// 创建标签
+func (api *ImageAPI) CreateTag(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, "参数错误")
+		return
+	}
+
+	err := imageService.CreateTag(req.Name)
+	if err != nil {
+		Fail(c, err.Error())
+		return
+	}
+
+	Success(c, nil)
+}
+
+// 更新标签
+func (api *ImageAPI) UpdateTag(c *gin.Context) {
+	var req struct {
+		OldName string `json:"old_name" binding:"required"`
+		NewName string `json:"new_name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, "参数错误")
+		return
+	}
+
+	err := imageService.UpdateTag(req.OldName, req.NewName)
+	if err != nil {
+		Fail(c, err.Error())
+		return
+	}
+
+	Success(c, nil)
+}
+
+// 删除标签
+func (api *ImageAPI) DeleteTag(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, "参数错误")
+		return
+	}
+
+	err := imageService.DeleteTag(req.Name)
+	if err != nil {
+		Fail(c, err.Error())
+		return
+	}
+
 	Success(c, nil)
 }
