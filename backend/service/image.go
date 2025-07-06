@@ -368,6 +368,61 @@ func (service *ImageService) GetTags() ([]string, error) {
 	return tagList, nil
 }
 
+func (service *ImageService) GetRandomImage(directory string, tags []string, count int64) ([]string, error) {
+	imageList := make([]model.ImageModel, 0)
+
+	if len(tags) > 0 {
+		// 查询同时拥有所有指定标签的图片
+		baseQuery := db.DB.Model(&model.ImageModel{}).
+			Joins("JOIN image_tag ON image_tag.image_id = image.id").
+			Joins("JOIN tag ON image_tag.tag_id = tag.id").
+			Where("tag.tag_name IN ?", tags).
+			Group("image.id").
+			Having("COUNT(DISTINCT tag.id) = ?", len(tags))
+
+		// 如果指定了目录，添加目录条件
+		if directory != "" {
+			baseQuery = baseQuery.Where("image.directory = ?", directory)
+		}
+
+		// 随机排序并限制数量
+		err := baseQuery.
+			Order("RAND()").
+			Limit(int(count)).
+			Select("image.*").
+			Find(&imageList).Error
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// 没有标签筛选时，查询图片
+		baseQuery := db.DB.Model(&model.ImageModel{})
+
+		// 如果指定了目录，添加目录条件
+		if directory != "" {
+			baseQuery = baseQuery.Where("directory = ?", directory)
+		}
+
+		// 随机排序并限制数量
+		err := baseQuery.
+			Order("RAND()").
+			Limit(int(count)).
+			Find(&imageList).Error
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 转换为 minio URL
+	urls := make([]string, 0)
+	for _, image := range imageList {
+		url := minio.Client.GetObjectURL(image.Directory, image.ImageCode+"."+image.Ext)
+		urls = append(urls, url)
+	}
+
+	return urls, nil
+}
+
 func (service *ImageService) DeleteImages(ids []int) error {
 	tx := db.DB.Begin()
 

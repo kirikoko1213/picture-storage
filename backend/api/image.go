@@ -122,6 +122,23 @@ func (api *ImageAPI) GetImageList(c *gin.Context) {
 	})
 }
 
+func (api *ImageAPI) GetRandomImage(c *gin.Context) {
+	tagsParam := c.Query("tags")
+	countParam := c.Query("count")
+	directoryParam := c.Query("directory")
+
+	tags := ut.Then(tagsParam != "", strings.Split(tagsParam, ","), []string{})
+	count := ut.Then(countParam != "", ut.Convert(countParam).Int64Value(), 1)
+	directory := ut.Then(directoryParam != "", directoryParam, "")
+
+	image, err := imageService.GetRandomImage(directory, tags, count)
+	if err != nil {
+		Fail(c, err.Error())
+		return
+	}
+	Success(c, image)
+}
+
 func (api *ImageAPI) GetTags(c *gin.Context) {
 	tags, err := imageService.GetTags()
 	if err != nil {
